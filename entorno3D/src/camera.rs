@@ -1,3 +1,4 @@
+//camera.rs
 use nalgebra_glm::Vec3;
 use std::f32::consts::PI;
 
@@ -9,11 +10,7 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(eye: Vec3, center: Vec3, up: Vec3) -> Self {
-        Camera {
-            eye,
-            center,
-            up,
-        }
+        Camera { eye, center, up }
     }
 
     pub fn basis_change(&self, vector: &Vec3) -> Vec3 {
@@ -21,10 +18,7 @@ impl Camera {
         let right = forward.cross(&self.up).normalize();
         let up = right.cross(&forward).normalize();
 
-        let rotated = 
-        vector.x * right +
-        vector.y * up -
-        vector.z * forward;
+        let rotated = vector.x * right + vector.y * up - vector.z * forward;
 
         rotated.normalize()
     }
@@ -41,7 +35,8 @@ impl Camera {
 
         // Calculate current pitch (rotation around X-axis)
         // xz here refers to the proyection of the radius over the x axis
-        let radius_xz = (radius_vector.x * radius_vector.x + radius_vector.z * radius_vector.z).sqrt();
+        let radius_xz =
+            (radius_vector.x * radius_vector.x + radius_vector.z * radius_vector.z).sqrt();
         // We use -y because positive pitch is when we look up (negative y in our coordinate system)
         // Range: [-π/2, π/2], where 0 is horizontal, π/2 is looking straight up
         let current_pitch = (-radius_vector.y).atan2(radius_xz);
@@ -58,12 +53,24 @@ impl Camera {
         // y = -r * sin(pitch)  // Negative because positive y is up
         // z = r * sin(yaw) * cos(pitch)
 
-        let new_eye = self.center + Vec3::new(
-            radius * new_yaw.cos() * new_pitch.cos(),
-            -radius * new_pitch.sin(),
-            radius * new_yaw.sin() * new_pitch.cos()
-        );
+        let new_eye = self.center
+            + Vec3::new(
+                radius * new_yaw.cos() * new_pitch.cos(),
+                -radius * new_pitch.sin(),
+                radius * new_yaw.sin() * new_pitch.cos(),
+            );
 
         self.eye = new_eye;
+    }
+    // Acerca (+delta) o aleja (-delta) la cámara del centro sin cambiar el ángulo
+    pub fn zoom(&mut self, delta: f32) {
+        let radius_vector = self.eye - self.center;
+        let radius = radius_vector.magnitude();
+
+        // nuevo radio (no permitir que llegue a 0)
+        let new_radius = (radius - delta).max(0.3);
+
+        let dir = radius_vector.normalize();
+        self.eye = self.center + dir * new_radius;
     }
 }

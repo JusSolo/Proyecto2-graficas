@@ -1,5 +1,6 @@
-use nalgebra_glm::Vec3;
+//ray_intersect.rs
 use crate::material::Material;
+use nalgebra_glm::Vec3;
 
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
@@ -34,9 +35,5 @@ impl Intersect {
 }
 
 pub trait RayIntersect {
-  fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Intersect;
+    fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Intersect;
 }
-
-
-
-

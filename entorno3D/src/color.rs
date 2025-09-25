@@ -1,3 +1,4 @@
+//color.rs
 use std::fmt;
 
 #[derive(Debug, Clone, Copy)]
@@ -63,4 +64,3 @@ impl fmt::Display for Color {
         write!(f, "Color(r: {}, g: {}, b: {})", self.r, self.g, self.b)
     }
 }
-

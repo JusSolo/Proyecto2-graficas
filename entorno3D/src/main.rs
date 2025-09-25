@@ -1,23 +1,31 @@
+// main.rs
 use minifb::{Key, Window, WindowOptions};
-use nalgebra_glm::{normalize, Vec3};
+use nalgebra_glm::{Vec3, normalize};
 use std::f32::consts::PI;
 use std::time::Duration;
 
 mod camera;
 mod color;
+mod cube;
 mod framebuffer;
+
 mod light;
 mod material;
+mod plane;
 mod ray_intersect;
 mod sphere;
+mod texture; // si no lo tienes aún
 
 use camera::Camera;
 use color::Color;
+use cube::Cube;
 use framebuffer::Framebuffer;
 use light::Light;
 use material::Material;
+
 use ray_intersect::{Intersect, RayIntersect};
 use sphere::Sphere;
+use texture::Texture;
 
 const SHADOW_BIAS: f32 = 1e-4;
 
@@ -36,7 +44,7 @@ fn refract(incident: &Vec3, normal: &Vec3, eta: f32) -> Option<Vec3> {
     }
 }
 
-fn cast_shadow(intersect: &Intersect, light: &Light, objects: &[Sphere]) -> f32 {
+fn cast_shadow(intersect: &Intersect, light: &Light, objects: &[Box<dyn RayIntersect>]) -> f32 {
     let light_dir = (light.position - intersect.point).normalize();
     let light_distance = (light.position - intersect.point).magnitude();
 
@@ -64,14 +72,14 @@ fn cast_shadow(intersect: &Intersect, light: &Light, objects: &[Sphere]) -> f32 
 pub fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
-    objects: &[Sphere],
+    objects: &[Box<dyn RayIntersect>],
     light: &Light,
-    depth: u32, // Añade profundidad para recursión
+    depth: u32,
 ) -> Color {
     const MAX_DEPTH: u32 = 5;
 
     if depth > MAX_DEPTH {
-        return Color::new(4, 12, 36); // Color del cielo
+        return Color::new(4, 12, 36);
     }
 
     let mut intersect = Intersect::empty();
@@ -89,7 +97,6 @@ pub fn cast_ray(
         return Color::new(4, 12, 36);
     }
 
-    // Cálculos de iluminación difusa y especular...
     let light_dir = (light.position - intersect.point).normalize();
     let view_dir = (ray_origin - intersect.point).normalize();
     let reflect_dir = reflect(&-light_dir, &intersect.normal);
@@ -110,7 +117,6 @@ pub fn cast_ray(
     let specular =
         light.color * intersect.material.albedo[1] * specular_intensity * light_intensity;
 
-    // Componente de reflexión
     let mut reflection_color = Color::new(0, 0, 0);
     if intersect.material.albedo[2] > 0.0 {
         let reflected_dir = reflect(ray_direction, &intersect.normal);
@@ -124,13 +130,12 @@ pub fn cast_ray(
         ) * intersect.material.albedo[2];
     }
 
-    // Componente de refracción
     let mut refraction_color = Color::new(0, 0, 0);
     if intersect.material.albedo[3] > 0.0 {
         let eta = if ray_direction.dot(&intersect.normal) < 0.0 {
-            1.0 / intersect.material.albedo[3] // De aire a material
+            1.0 / intersect.material.albedo[3]
         } else {
-            intersect.material.albedo[3] // De material a aire
+            intersect.material.albedo[3]
         };
 
         if let Some(refracted_dir) = refract(ray_direction, &intersect.normal, eta) {
@@ -145,15 +150,12 @@ pub fn cast_ray(
         }
     }
 
-    // Luz reflejada (iluminación indirecta)
     let mut reflected_light_color = Color::new(0, 0, 0);
     if intersect.material.albedo[2] > 0.0 {
-        // Solo calcular si el material tiene reflexión
         let reflected_dir = reflect(ray_direction, &intersect.normal);
         let reflection_origin = intersect.point + intersect.normal * SHADOW_BIAS;
 
-        // Muestrear en varias direcciones alrededor de la reflexión perfecta para suavizar
-        for i in 0..3 {
+        for _ in 0..3 {
             let jitter = Vec3::new(
                 rand::random::<f32>() - 0.5,
                 rand::random::<f32>() - 0.5,
@@ -168,11 +170,19 @@ pub fn cast_ray(
 
         reflected_light_color = reflected_light_color * (1.0 / 3.0) * intersect.material.albedo[2];
     }
+    // === 🔥 Luz ambiental ===
+    let ambient_strength = 0.22; // controla qué tan fuerte es la luz ambiente
+    let ambient = intersect.material.diffuse * ambient_strength;
 
-    diffuse + specular + reflection_color + refraction_color + reflected_light_color
+    diffuse + specular + reflection_color + refraction_color + reflected_light_color + ambient
 }
 
-pub fn render(framebuffer: &mut Framebuffer, objects: &[Sphere], camera: &Camera, light: &Light) {
+pub fn render(
+    framebuffer: &mut Framebuffer,
+    objects: &[Box<dyn RayIntersect>],
+    camera: &Camera,
+    light: &Light,
+) {
     let width = framebuffer.width as f32;
     let height = framebuffer.height as f32;
     let aspect_ratio = width / height;
@@ -181,24 +191,18 @@ pub fn render(framebuffer: &mut Framebuffer, objects: &[Sphere], camera: &Camera
 
     for y in 0..framebuffer.height {
         for x in 0..framebuffer.width {
-            // Map the pixel coordinate to screen space [-1, 1]
             let screen_x = (2.0 * x as f32) / width - 1.0;
             let screen_y = -(2.0 * y as f32) / height + 1.0;
 
-            // Adjust for aspect ratio and perspective
             let screen_x = screen_x * aspect_ratio * perspective_scale;
             let screen_y = screen_y * perspective_scale;
 
-            // Calculate the direction of the ray for this pixel
             let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
 
-            // Apply camera rotation to the ray direction
             let rotated_direction = camera.basis_change(&ray_direction);
 
-            // Cast the ray and get the pixel color
             let pixel_color = cast_ray(&camera.eye, &rotated_direction, objects, light, 0);
 
-            // Draw the pixel on screen with the returned color
             framebuffer.set_current_color(pixel_color.to_hex());
             framebuffer.point(x, y);
         }
@@ -206,6 +210,52 @@ pub fn render(framebuffer: &mut Framebuffer, objects: &[Sphere], camera: &Camera
 }
 
 fn main() {
+    // Usar la misma textura PNG para los 6 lados
+    //agrega una botalla de klein transparente de vidrio
+
+    let floor_cube = Cube {
+        min: Vec3::new(-3.0, -1.0, -3.0), // más ancho y delgado
+        max: Vec3::new(3.0, -0.8, 3.0),   // altura pequeña
+        material: Material::new(Color::new(200, 200, 200), 50.0, [1.0, 0.5, 0.15, 0.2]),
+        textures: [
+            Some(Texture::from_file("assets/marmol_lado2.png")),
+            Some(Texture::from_file("assets/marmol_lado.png")), // se ve mal
+            Some(Texture::from_file("assets/Base_marmol.png")), // abajo
+            Some(Texture::from_file("assets/marmol.png")),      //arriba
+            Some(Texture::from_file("assets/marmol_lado2.png")),
+            Some(Texture::from_file("assets/marmol_lado.png")), // se ve mal
+        ],
+    };
+
+    let tex_negx = Texture::from_file("assets/cuboR2.png");
+    let tex_posx = Texture::from_file("assets/cuboL2.png");
+    let tex_negy = Texture::from_file("assets/cuboB2.png");
+    let tex_posy = Texture::from_file("assets/cuboF2.png");
+    let tex_negz = Texture::from_file("assets/cuboD2.png");
+    let tex_posz = Texture::from_file("assets/cuboU2.png");
+
+    // Cubo decorativo en una esquina del piso
+    let deco_cube = Cube {
+        min: Vec3::new(-1.8, -0.8, -1.8),
+        max: Vec3::new(-1.2, -0.2, -1.2),
+        material: Material::new(Color::new(50, 150, 200), 80.0, [0.6, 0.3, 0.04, 0.1]),
+        textures: [
+            Some(tex_negx),
+            Some(tex_posx),
+            Some(tex_negy),
+            Some(tex_posy),
+            Some(tex_negz),
+            Some(tex_posz),
+        ],
+    };
+
+    // Esfera en la esquina opuesta del piso
+    let sphere = Sphere {
+        center: Vec3::new(2.5, -0.4, 2.5),
+        radius: 0.5,
+        material: Material::new(Color::new(200, 50, 50), 100.0, [0.7, 0.3, 0.2, 0.1]), //new(Color::new(50, 50, 50), 100.0, [0.7, 0.3, 0.6, 0.1]),
+    };
+
     let window_width = 800;
     let window_height = 600;
     let framebuffer_width = 800;
@@ -221,65 +271,27 @@ fn main() {
     )
     .unwrap();
 
-    // move the window around
     window.set_position(500, 500);
     window.update();
 
-    // Material con refracción (vidrio)
-    let glass = Material::new(
-        Color::new(180, 180, 225),
-        125.0,
-        [0.1, 0.1, 0.1, 0.8], // Bajo difuso/especular, alta refracción
-    );
+    // Objetos en la escena
+    let objects: Vec<Box<dyn RayIntersect>> =
+        vec![Box::new(floor_cube), Box::new(deco_cube), Box::new(sphere)];
 
-    let ivory = Material::new(
-        Color::new(10, 230, 105),
-        50.0,
-        [0.6, 0.3, 0.1, 0.0], // Sin refracción
-    );
-
-    // Esfera con reflexión completa
-    let mirror = Material::new(
-        Color::new(105, 210, 210),
-        400.0,
-        [0.1, 0.1, 1.0, 0.3], // Reflexión completa (albedo[2] = 1.0)
-    );
-
-    let objects = [
-        Sphere {
-            center: Vec3::new(0.0, 0.0, 0.0),
-            radius: 1.0,
-            material: glass,
-        },
-        Sphere {
-            center: Vec3::new(0.0, 0.0, 1.5),
-            radius: 0.35,
-            material: ivory,
-        },
-        Sphere {
-            center: Vec3::new(-2.0, 1.0, -3.0),
-            radius: 1.0,
-            material: mirror, // Esfera con reflexión completa
-        },
-    ];
-
-    // Initialize camera
     let mut camera = Camera::new(
-        Vec3::new(0.0, 0.0, 5.0), // eye: Initial camera position
-        Vec3::new(0.0, 0.0, 0.0), // center: Point the camera is looking at (origin)
-        Vec3::new(0.0, 1.0, 0.0), // up: World up vector
+        Vec3::new(0.0, 2.0, 7.0),
+        Vec3::new(0.0, -0.5, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
     );
     let rotation_speed = PI / 50.0;
-
-    let light = Light::new(Vec3::new(0.0, 3.0, 5.0), Color::new(255, 223, 250), 2.0);
+    let zoom_speed = 0.3;
+    let light = Light::new(Vec3::new(2.0, 3.0, 5.0), Color::new(255, 223, 250), 2.0);
 
     while window.is_open() {
-        // listen to inputs
         if window.is_key_down(Key::Escape) {
             break;
         }
-
-        //  camera orbit controls
+        // rotacion
         if window.is_key_down(Key::Left) {
             camera.orbit(rotation_speed, 0.);
         }
@@ -292,11 +304,16 @@ fn main() {
         if window.is_key_down(Key::Down) {
             camera.orbit(0., rotation_speed);
         }
+        // 🔎 Zoom
+        if window.is_key_down(Key::S) {
+            camera.zoom(zoom_speed); // acercar
+        }
+        if window.is_key_down(Key::A) {
+            camera.zoom(-zoom_speed); // alejar
+        }
 
-        // draw some points
         render(&mut framebuffer, &objects, &camera, &light);
 
-        // update the window with the framebuffer contents
         window
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
             .unwrap();

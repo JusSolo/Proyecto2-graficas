@@ -1,5 +1,6 @@
-use nalgebra_glm::Vec3;
+//light.rs
 use crate::color::Color;
+use nalgebra_glm::Vec3;
 
 pub struct Light {
     pub position: Vec3,
