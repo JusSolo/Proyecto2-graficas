@@ -1,13 +1,15 @@
 // main.rs
+use crate::pawn::Pawn;
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{Vec3, normalize};
 use std::f32::consts::PI;
 use std::time::Duration;
-
 mod camera;
 mod color;
+
 mod cube;
 mod framebuffer;
+mod pawn;
 
 mod light;
 mod material;
@@ -249,6 +251,12 @@ fn main() {
         ],
     };
 
+    let pawn = Pawn {
+        base: Vec3::new(-1.1, -0.8, 0.5), // centro del tablero sobre el piso
+        scale: 0.5,                       // menor que 1/8 del ancho (6/8 = 0.75, usamos 0.5)
+        material: Material::new(Color::new(180, 140, 90), 80.0, [0.8, 0.3, 0.04, 0.0]),
+    };
+
     // Esfera en la esquina opuesta del piso
     let sphere = Sphere {
         center: Vec3::new(2.5, -0.4, 2.5),
@@ -275,8 +283,12 @@ fn main() {
     window.update();
 
     // Objetos en la escena
-    let objects: Vec<Box<dyn RayIntersect>> =
-        vec![Box::new(floor_cube), Box::new(deco_cube), Box::new(sphere)];
+    let objects: Vec<Box<dyn RayIntersect>> = vec![
+        Box::new(floor_cube),
+        Box::new(deco_cube),
+        Box::new(sphere),
+        Box::new(pawn),
+    ];
 
     let mut camera = Camera::new(
         Vec3::new(0.0, 2.0, 7.0),

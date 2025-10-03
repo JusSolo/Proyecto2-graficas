@@ -48,9 +48,9 @@ impl RayIntersect for Cube {
         if tzmin > tmin {
             tmin = tzmin;
         }
-        if tzmax < tmax {
-            tmax = tzmax;
-        }
+        //if tzmax < tmax {
+        //    tmax = tzmax;
+        //}
 
         if tmin < 0.0 {
             return Intersect::empty();
