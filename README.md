@@ -1,4 +1,5 @@
 # 🏰 Diorama 3D
+![Texto alternativo](diorama.png)
 
 Forma de manejar la camara del diorama
 - Rotacion de camara :⬅️ ➡️ ⬆️ ⬇️ **Flechas** 
